@@ -1,0 +1,7 @@
+pygame
+pandas
+numpy
+matplotlib
+requests
+netCDF4
+earthdata
