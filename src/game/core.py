@@ -2170,7 +2170,7 @@ class Game:
         stats = [
             f"Money: ${self.money:.0f}",
             f"Planted: {self.farm.total_planted}",
-            f"Harvested: {self.farm.total_harvested:.0f}",
+            f"Harvested: {self.farm.total_harvested}",
             f"Earned: ${self.total_earned:.0f}",
             f"Spent: ${self.total_spent:.0f}",
             f"Profit: ${self.total_earned - self.total_spent:.0f}",
@@ -2432,7 +2432,7 @@ class Game:
             },
             {
                 "name": "Crops Harvested", 
-                "value": f"{self.farm.total_harvested:.1f}",
+                "value": f"{self.farm.total_harvested}",
                 "color": (218, 165, 32),  # Gold
                 "icon_type": "circle"
             },
@@ -2623,7 +2623,7 @@ class Farm:
         if tile and tile.crop and tile.crop.is_mature():
             crop_yield = tile.crop.get_yield(tile.water_level / tile.max_water, 
                                             tile.nutrient_level / tile.max_nutrients)
-            self.total_harvested += crop_yield
+            self.total_harvested += 1  # Count each harvested crop as 1, not by yield amount
             
             # Store the crop type before clearing it (for the animation)
             harvested_crop_type = tile.crop.type
@@ -3159,7 +3159,7 @@ class Crop:
                 self.protection_days_left -= 1
                 if self.protection_days_left <= 0:
                     self.weather_protection = False
-                    print(f"🛡️ Weather protection expired for {self.crop_type}!")
+                    print(f"🛡️ Weather protection expired for {self.type}!")
                     delattr(self, 'protection_days_left')
         
     def get_weather_stress_level(self):
