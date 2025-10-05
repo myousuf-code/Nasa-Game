@@ -57,7 +57,7 @@ NASA Farm Navigator is a comprehensive farming simulation game that integrates r
 ### Quick Setup
 1. **Clone the Repository**
    ```bash
-   git clone [repository-url]
+   git clone https://github.com/myousuf-code/Nasa-Game.git
    cd "Nasa Game"
    ```
 
