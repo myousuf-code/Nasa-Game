@@ -96,6 +96,13 @@ class Game:
         self.show_weather_panel = False  # Start with weather panel hidden
         self.show_stats_panel = True     # Start with statistics panel shown
         
+        # NASA data loading state
+        self.nasa_data_loading = True
+        self.nasa_loading_start_time = pygame.time.get_ticks()
+        self.nasa_loading_dots = 0
+        self.nasa_loading_message = "Connecting to NASA POWER API..."
+        self.nasa_data_loaded = False
+        
         # Scrolling system
         self.scroll_x = 0  # Horizontal scroll offset
         self.scroll_y = 0  # Vertical scroll offset
@@ -127,41 +134,176 @@ class Game:
         # TODO: Load actual game assets
         # For now, create some placeholder graphics
         
-        # Create a simple soil texture
+        # Create enhanced soil textures with varied browns and natural patterns
         soil = pygame.Surface((32, 32))
-        soil.fill((139, 69, 19))  # Brown color
+        
+        # Create a varied soil base with different shades of brown
+        base_colors = [
+            (139, 69, 19),   # Saddle brown
+            (160, 82, 45),   # Dark brown
+            (210, 180, 140), # Tan
+            (205, 133, 63),  # Peru brown
+            (139, 118, 76)   # Dark olive brown
+        ]
+        
+        # Fill with random soil colors for natural variation
+        for x in range(32):
+            for y in range(32):
+                # Create soil variation using noise-like pattern
+                color_choice = ((x + y) * 7 + x * 3 + y * 5) % len(base_colors)
+                base_color = base_colors[color_choice]
+                
+                # Add slight random variation to each pixel
+                variation = (x * y) % 20 - 10  # -10 to +10 variation
+                varied_color = (
+                    max(0, min(255, base_color[0] + variation)),
+                    max(0, min(255, base_color[1] + variation)),
+                    max(0, min(255, base_color[2] + variation))
+                )
+                soil.set_at((x, y), varied_color)
+        
+        # Add subtle furrow lines to simulate tilled soil
+        for i in range(0, 32, 4):
+            pygame.draw.line(soil, (120, 60, 15), (0, i), (32, i), 1)  # Dark furrow lines
+            if i + 1 < 32:
+                pygame.draw.line(soil, (180, 120, 80), (0, i + 1), (32, i + 1), 1)  # Lighter ridge lines
+        
+        # Add small rocks and debris for realism
+        for i in range(8):  # Add 8 small details
+            x, y = (i * 4 + 2) % 32, (i * 3 + 3) % 32
+            pygame.draw.circle(soil, (101, 67, 33), (x, y), 1)  # Small dark spots (rocks)
+        
         assets['images']['soil'] = soil
         
-        # Create crop textures for different crop types
-        # Corn texture
+        # Create enhanced crop textures for different crop types
+        
+        # Enhanced Corn texture with more detail
         corn = pygame.Surface((32, 32))
-        corn.fill((0, 100, 0))  # Dark green base
+        corn.fill((0, 0, 0, 0))  # Transparent background
+        corn = corn.convert_alpha()
+        
+        # Draw corn stalk with gradient
+        for height in range(32, 8, -1):
+            stalk_width = max(1, 4 - (32 - height) // 6)
+            stalk_color = (0, 120 + (32 - height) * 2, 0)  # Gradient from dark to light green
+            pygame.draw.circle(corn, stalk_color, (16, height), stalk_width // 2)
+        
+        # Draw corn leaves
         for i in range(3):
-            pygame.draw.line(corn, (0, 150, 0), (16, 32), (16, 5), 2)  # Stalk
-            pygame.draw.ellipse(corn, (255, 255, 0), (10 + i*4, 5 + i*4, 12, 20))  # Corn cob
+            leaf_y = 25 - i * 6
+            # Left leaf
+            pygame.draw.ellipse(corn, (34, 139, 34), (8, leaf_y - 2, 8, 12))
+            # Right leaf  
+            pygame.draw.ellipse(corn, (34, 139, 34), (16, leaf_y - 2, 8, 12))
+        
+        # Draw corn cobs
+        for i in range(2):
+            cob_y = 8 + i * 3
+            pygame.draw.ellipse(corn, (255, 215, 0), (12 + i * 4, cob_y, 6, 14))  # Golden corn
+            # Add corn kernel texture
+            for row in range(7):
+                for col in range(2):
+                    kernel_x = 13 + i * 4 + col * 2
+                    kernel_y = cob_y + 2 + row * 2
+                    pygame.draw.circle(corn, (255, 235, 59), (kernel_x, kernel_y), 1)
+        
         assets['images']['corn'] = corn
         
-        # Wheat texture
+        # Enhanced Wheat texture with more realistic appearance
         wheat = pygame.Surface((32, 32))
-        wheat.fill((0, 100, 0))  # Dark green base
-        for i in range(5):
-            pygame.draw.line(wheat, (245, 222, 179), (8+i*4, 8), (8+i*4, 20), 2)  # Wheat stalks
-            pygame.draw.circle(wheat, (245, 222, 179), (8+i*4, 5), 3)  # Wheat heads
+        wheat.fill((0, 0, 0, 0))  # Transparent background
+        wheat = wheat.convert_alpha()
+        
+        # Draw wheat field background
+        pygame.draw.rect(wheat, (154, 205, 50), (0, 20, 32, 12))  # Light green base
+        
+        # Draw individual wheat stalks with more detail
+        stalk_positions = [4, 8, 12, 16, 20, 24, 28]
+        for i, x_pos in enumerate(stalk_positions):
+            stalk_height = 22 + (i % 3) * 2  # Varying heights
+            # Draw stalk
+            pygame.draw.line(wheat, (218, 165, 32), (x_pos, 30), (x_pos, stalk_height), 2)
+            
+            # Draw wheat head
+            head_color = (245, 222, 179) if i % 2 == 0 else (255, 228, 181)
+            pygame.draw.ellipse(wheat, head_color, (x_pos - 2, stalk_height - 8, 4, 10))
+            
+            # Add wheat grain details
+            for grain in range(4):
+                grain_y = stalk_height - 6 + grain * 2
+                pygame.draw.circle(wheat, (240, 230, 140), (x_pos, grain_y), 1)
+        
+        # Add wheat awns (the bristles)
+        for i, x_pos in enumerate(stalk_positions):
+            awn_start_y = 22 + (i % 3) * 2 - 8
+            for awn in range(3):
+                awn_x = x_pos + awn - 1
+                pygame.draw.line(wheat, (210, 180, 140), (awn_x, awn_start_y), (awn_x - 1, awn_start_y - 6), 1)
+        
         assets['images']['wheat'] = wheat
         
-        # Tomato texture
+        # Enhanced Tomato texture with plant structure
         tomato = pygame.Surface((32, 32))
-        tomato.fill((0, 100, 0))  # Dark green base
-        pygame.draw.line(tomato, (0, 150, 0), (16, 32), (16, 15), 2)  # Stem
-        pygame.draw.circle(tomato, (255, 0, 0), (16, 12), 8)  # Tomato
-        pygame.draw.line(tomato, (0, 150, 0), (16, 4), (22, 8), 2)  # Leaf
-        pygame.draw.line(tomato, (0, 150, 0), (16, 4), (10, 8), 2)  # Leaf
+        tomato.fill((0, 0, 0, 0))  # Transparent background
+        tomato = tomato.convert_alpha()
+        
+        # Draw tomato plant base and stem
+        pygame.draw.rect(tomato, (34, 139, 34), (14, 20, 4, 12))  # Main stem
+        
+        # Draw tomato plant leaves with more detail
+        leaf_positions = [(8, 18), (20, 16), (6, 22), (22, 24)]
+        for leaf_x, leaf_y in leaf_positions:
+            # Draw leaf shape
+            pygame.draw.ellipse(tomato, (0, 128, 0), (leaf_x, leaf_y, 8, 6))
+            # Add leaf veins
+            pygame.draw.line(tomato, (0, 100, 0), (leaf_x + 1, leaf_y + 3), (leaf_x + 7, leaf_y + 3), 1)
+            pygame.draw.line(tomato, (0, 100, 0), (leaf_x + 4, leaf_y + 1), (leaf_x + 4, leaf_y + 5), 1)
+        
+        # Draw tomatoes with shading
+        tomato_positions = [(12, 8), (18, 12), (14, 16)]
+        for i, (tom_x, tom_y) in enumerate(tomato_positions):
+            size = 6 - i  # Varying sizes
+            # Main tomato body
+            pygame.draw.circle(tomato, (255, 69, 0), (tom_x, tom_y), size)
+            # Highlight for 3D effect
+            pygame.draw.circle(tomato, (255, 99, 71), (tom_x - 1, tom_y - 1), size // 2)
+            # Tomato top (calyx)
+            pygame.draw.circle(tomato, (34, 139, 34), (tom_x, tom_y - size), 2)
+            # Small star pattern on top
+            for angle in range(0, 360, 72):  # 5-pointed star
+                import math
+                end_x = tom_x + int(math.cos(math.radians(angle)) * 2)
+                end_y = tom_y - size + int(math.sin(math.radians(angle)) * 2)
+                pygame.draw.line(tomato, (0, 100, 0), (tom_x, tom_y - size), (end_x, end_y), 1)
+        
         assets['images']['tomato'] = tomato
         
-        # Create a default crop texture (fallback)
+        # Create an enhanced default crop texture (fallback)
         crop = pygame.Surface((32, 32))
-        crop.fill((0, 128, 0))  # Green color
-        pygame.draw.circle(crop, (255, 255, 0), (16, 8), 4)  # Yellow flower
+        crop.fill((0, 0, 0, 0))  # Transparent background
+        crop = crop.convert_alpha()
+        
+        # Draw a generic plant with stem and leaves
+        pygame.draw.line(crop, (34, 139, 34), (16, 30), (16, 10), 3)  # Main stem
+        
+        # Add leaves at different levels
+        leaf_levels = [12, 16, 20, 24]
+        for i, leaf_y in enumerate(leaf_levels):
+            # Alternate leaf sides
+            if i % 2 == 0:
+                # Left leaf
+                pygame.draw.ellipse(crop, (0, 128, 0), (8, leaf_y, 10, 6))
+            else:
+                # Right leaf
+                pygame.draw.ellipse(crop, (0, 128, 0), (16, leaf_y, 10, 6))
+        
+        # Add a flower or fruit at the top
+        pygame.draw.circle(crop, (255, 255, 100), (16, 8), 4)  # Yellow flower
+        # Add small petals
+        petal_positions = [(12, 8), (20, 8), (16, 4), (16, 12)]
+        for petal_x, petal_y in petal_positions:
+            pygame.draw.circle(crop, (255, 255, 255), (petal_x, petal_y), 2)
+        
         assets['images']['crop'] = crop
         
         # Create a simple water texture
@@ -515,8 +657,21 @@ class Game:
         """Update weather data using NASA data sources."""
         if self.data_processor:
             try:
+                # Update loading message if still loading
+                if self.nasa_data_loading:
+                    current_time = pygame.time.get_ticks()
+                    # Update loading dots animation
+                    if current_time - self.nasa_loading_start_time > 500:  # Change every 500ms
+                        self.nasa_loading_dots = (self.nasa_loading_dots + 1) % 4
+                        self.nasa_loading_start_time = current_time
+                
                 # Get weather data from NASA POWER API through our data processor
                 date_str = self.current_date.strftime("%Y-%m-%d")
+                
+                # Update loading message
+                if self.nasa_data_loading:
+                    self.nasa_loading_message = "Fetching NASA climate data..."
+                
                 weather = self.data_processor.get_daily_weather(
                     self.location["lat"],
                     self.location["lon"],
@@ -524,8 +679,16 @@ class Game:
                 )
                 self.weather_data = weather
                 
+                # Mark NASA data as loaded successfully
+                if self.nasa_data_loading and not weather.get("is_placeholder", False):
+                    self.nasa_data_loading = False
+                    self.nasa_data_loaded = True
+                    print("NASA data loaded successfully!")
+                
                 # Update weather forecast every 7 days
                 if not self.weather_forecast or self.current_date.day % 7 == 1:
+                    if self.nasa_data_loading:
+                        self.nasa_loading_message = "Generating weather forecast..."
                     self._update_weather_forecast()
                     
                 # Weather events affect farm conditions
@@ -536,10 +699,19 @@ class Game:
                 if not hasattr(self, '_weather_error_shown'):
                     print(f"NASA Weather API unavailable. Using simulated weather data.")
                     self._weather_error_shown = True
+                
+                # Mark loading as failed, switch to simulated data
+                if self.nasa_data_loading:
+                    self.nasa_data_loading = False
+                    self.nasa_loading_message = "Using simulated weather data"
+                
                 # Fall back to simple weather model if API call fails
                 self._generate_simulated_weather()
         else:
             # Use simulated weather if data processor is not available
+            if self.nasa_data_loading:
+                self.nasa_data_loading = False
+                self.nasa_loading_message = "Using simulated weather data"
             self._generate_simulated_weather()
     
     def _update_weather_forecast(self):
@@ -810,18 +982,136 @@ class Game:
         # Clear the screen
         self.screen.fill((135, 206, 235))  # Sky blue background
         
-        # Draw the farm
-        self._draw_farm()
-        
-        # Draw UI elements
-        self._draw_ui()
-        
-        # Draw the active tool indicator
-        self._draw_active_tool_indicator()
+        # Show loading screen if NASA data is still loading
+        if self.nasa_data_loading:
+            self._draw_nasa_loading_screen()
+        else:
+            # Draw the farm
+            self._draw_farm()
+            
+            # Draw UI elements
+            self._draw_ui()
+            
+            # Draw the active tool indicator
+            self._draw_active_tool_indicator()
         
         # Update the display
         pygame.display.flip()
         
+    def _draw_nasa_loading_screen(self):
+        """Draw the NASA data loading screen."""
+        # Create a semi-transparent overlay
+        overlay = pygame.Surface((self.width, self.height))
+        overlay.set_alpha(240)
+        overlay.fill((25, 25, 50))  # Dark blue overlay
+        self.screen.blit(overlay, (0, 0))
+        
+        # Calculate responsive sizing based on screen dimensions
+        center_x = self.width // 2
+        center_y = self.height // 2
+        
+        # NASA logo area (responsive sizing) - adjusted for better text fit
+        logo_width = min(350, self.width // 3)
+        logo_height = 100
+        logo_rect = pygame.Rect(center_x - logo_width // 2, center_y - 160, logo_width, logo_height)
+        pygame.draw.rect(self.screen, (255, 255, 255), logo_rect, 2)
+        
+        # NASA text (responsive font size) - positioned in upper part of box
+        font_size_large = min(48, self.width // 20)
+        font_large = pygame.font.SysFont('Arial', font_size_large, bold=True)
+        nasa_text = font_large.render("NASA", True, (255, 255, 255))
+        nasa_rect = nasa_text.get_rect(center=(center_x, center_y - 135))
+        self.screen.blit(nasa_text, nasa_rect)
+        
+        # Subtitle (responsive font size) - positioned in lower part of box
+        font_size_medium = min(20, self.width // 50)
+        font_medium = pygame.font.SysFont('Arial', font_size_medium)
+        subtitle_text = font_medium.render("Farm Navigator", True, (200, 200, 200))
+        subtitle_rect = subtitle_text.get_rect(center=(center_x, center_y - 105))
+        self.screen.blit(subtitle_text, subtitle_rect)
+        
+        # Loading message with animated dots (with text wrapping)
+        font_size_regular = min(28, self.width // 35)
+        font_regular = pygame.font.SysFont('Arial', font_size_regular)
+        dots = "." * self.nasa_loading_dots
+        loading_text = f"{self.nasa_loading_message}{dots}"
+        
+        # Check if text fits, if not, truncate or wrap
+        max_width = self.width - 100  # Leave 50px margin on each side
+        loading_surface = font_regular.render(loading_text, True, (255, 255, 255))
+        
+        if loading_surface.get_width() > max_width:
+            # Truncate the message if it's too long
+            base_message = self.nasa_loading_message[:30] + "..." if len(self.nasa_loading_message) > 30 else self.nasa_loading_message
+            loading_text = f"{base_message}{dots}"
+            loading_surface = font_regular.render(loading_text, True, (255, 255, 255))
+        
+        loading_rect = loading_surface.get_rect(center=(center_x, center_y - 20))
+        self.screen.blit(loading_surface, loading_rect)
+        
+        # Progress indicator (spinning circle) - responsive size
+        progress_y = center_y + 40
+        radius = min(30, self.width // 30)
+        
+        # Calculate rotation angle based on time
+        current_time = pygame.time.get_ticks()
+        angle = (current_time // 50) % 360  # Rotate every 50ms
+        
+        # Draw spinning segments
+        segment_count = 8
+        for i in range(segment_count):
+            segment_angle = (angle + i * 45) % 360
+            # Calculate segment opacity (fade effect)
+            opacity = 255 - (i * 30)
+            if opacity < 50:
+                opacity = 50
+                
+            # Calculate segment end position
+            import math
+            end_x = center_x + radius * math.cos(math.radians(segment_angle))
+            end_y = progress_y + radius * math.sin(math.radians(segment_angle))
+            
+            # Draw segment
+            pygame.draw.line(self.screen, (opacity, opacity, opacity), 
+                           (center_x, progress_y), (end_x, end_y), 4)
+        
+        # Status information (responsive and with wrapping)
+        font_size_small = min(18, self.width // 60)
+        font_small = pygame.font.SysFont('Arial', font_size_small)
+        status_lines = [
+            "Connecting to NASA POWER API",
+            "Fetching climate data for simulation",
+            "Please wait for real satellite data..."
+        ]
+        
+        # Calculate starting position for status text to ensure it fits
+        status_start_y = center_y + 100
+        max_status_width = self.width - 80  # Leave 40px margin on each side
+        
+        for i, line in enumerate(status_lines):
+            # Check if line fits, if not, truncate
+            status_surface = font_small.render(line, True, (180, 180, 180))
+            if status_surface.get_width() > max_status_width:
+                # Truncate line if too long
+                truncated_line = line[:max(20, max_status_width // (font_size_small // 2))] + "..."
+                status_surface = font_small.render(truncated_line, True, (180, 180, 180))
+            
+            status_y = status_start_y + i * (font_size_small + 5)
+            # Ensure status text doesn't go off screen
+            if status_y + font_size_small < self.height - 80:
+                status_rect = status_surface.get_rect(center=(center_x, status_y))
+                self.screen.blit(status_surface, status_rect)
+        
+        # NASA branding footer (ensure it fits)
+        footer_text = "Powered by NASA Earth Science Data"
+        footer_surface = font_small.render(footer_text, True, (150, 150, 150))
+        if footer_surface.get_width() > max_status_width:
+            footer_text = "NASA Earth Science Data"
+            footer_surface = font_small.render(footer_text, True, (150, 150, 150))
+        
+        footer_rect = footer_surface.get_rect(center=(center_x, self.height - 50))
+        self.screen.blit(footer_surface, footer_rect)
+    
     def _draw_active_tool_indicator(self):
         """Draw an indicator showing the current active tool."""
         if not self.active_tool:
@@ -893,11 +1183,98 @@ class Game:
         farm_clip_rect = pygame.Rect(farm_start_x, farm_start_y, farm_area_width, farm_area_height)
         self.screen.set_clip(farm_clip_rect)
         
-        # Draw farm background (with scroll offset)
+        # Draw enhanced farm background with natural field patterns
         farm_bg = pygame.Rect(farm_start_x - 5 - self.scroll_x, farm_start_y - 5 - self.scroll_y, 
                              cell_size * self.farm.width + 10, 
                              cell_size * self.farm.height + 10)
-        pygame.draw.rect(self.screen, (100, 70, 40), farm_bg)  # Brown border
+        
+        # Create a gradient background for the farm area
+        for i in range(farm_bg.height):
+            gradient_color = (
+                max(80, 100 - i // 3),   # Slightly varying brown
+                max(50, 70 - i // 4), 
+                max(20, 40 - i // 5)
+            )
+            pygame.draw.rect(self.screen, gradient_color, 
+                           (farm_bg.x, farm_bg.y + i, farm_bg.width, 1))
+        
+        # Add farm boundary fence with posts
+        fence_color = (101, 67, 33)  # Dark brown for fence
+        pygame.draw.rect(self.screen, fence_color, farm_bg, 3)  # Thick border
+        
+        # Add fence posts at corners and intervals
+        post_size = max(4, cell_size // 6)
+        post_color = (80, 53, 26)  # Darker brown for posts
+        
+        # Corner posts
+        corners = [
+            (farm_bg.left - post_size//2, farm_bg.top - post_size//2),
+            (farm_bg.right - post_size//2, farm_bg.top - post_size//2),
+            (farm_bg.left - post_size//2, farm_bg.bottom - post_size//2),
+            (farm_bg.right - post_size//2, farm_bg.bottom - post_size//2)
+        ]
+        
+        for corner_x, corner_y in corners:
+            pygame.draw.rect(self.screen, post_color, (corner_x, corner_y, post_size, post_size))
+        
+        # Add gate entrance (decorative)
+        gate_width = cell_size * 2
+        gate_x = farm_bg.centerx - gate_width // 2
+        gate_y = farm_bg.bottom - 3
+        pygame.draw.rect(self.screen, (139, 118, 76), (gate_x, gate_y, gate_width, 6))  # Dirt entrance
+        
+        # Add small decorative elements around the farm
+        # Water trough (if farm is large enough)
+        if self.farm.width > 8 and self.farm.height > 8:
+            trough_x = farm_bg.right + 10
+            trough_y = farm_bg.top + cell_size * 2
+            trough_rect = pygame.Rect(trough_x, trough_y, cell_size//2, cell_size//3)
+            pygame.draw.rect(self.screen, (100, 100, 100), trough_rect)  # Gray trough
+            pygame.draw.rect(self.screen, (0, 100, 255), trough_rect.inflate(-4, -2))  # Blue water
+        
+        # Add tool shed (decorative)
+        if self.farm.width > 10:
+            shed_x = farm_bg.left - cell_size
+            shed_y = farm_bg.top
+            shed_rect = pygame.Rect(shed_x, shed_y, cell_size//2, cell_size//2)
+            pygame.draw.rect(self.screen, (139, 69, 19), shed_rect)  # Brown shed
+            # Shed roof
+            roof_points = [
+                (shed_rect.left, shed_rect.top),
+                (shed_rect.centerx, shed_rect.top - cell_size//6),
+                (shed_rect.right, shed_rect.top)
+            ]
+            pygame.draw.polygon(self.screen, (101, 67, 33), roof_points)
+        
+        # Draw field pathways every 5-6 rows/columns for realistic farm layout
+        path_color = (160, 130, 80)  # Dirt path color
+        path_width = max(2, cell_size // 8)
+        
+        # Horizontal paths
+        for path_row in range(5, self.farm.height, 6):
+            path_y = farm_start_y + path_row * cell_size - self.scroll_y
+            pygame.draw.rect(self.screen, path_color, 
+                           (farm_start_x - self.scroll_x, path_y - path_width//2, 
+                            cell_size * self.farm.width, path_width))
+        
+        # Vertical paths  
+        for path_col in range(5, self.farm.width, 6):
+            path_x = farm_start_x + path_col * cell_size - self.scroll_x
+            pygame.draw.rect(self.screen, path_color,
+                           (path_x - path_width//2, farm_start_y - self.scroll_y,
+                            path_width, cell_size * self.farm.height))
+        
+        # Add field section markers (lighter borders every 3x3 sections)
+        section_color = (120, 90, 50)  # Medium brown for section borders
+        for section_y in range(0, self.farm.height, 3):
+            for section_x in range(0, self.farm.width, 3):
+                section_rect = pygame.Rect(
+                    farm_start_x + section_x * cell_size - self.scroll_x,
+                    farm_start_y + section_y * cell_size - self.scroll_y,
+                    min(3 * cell_size, (self.farm.width - section_x) * cell_size),
+                    min(3 * cell_size, (self.farm.height - section_y) * cell_size)
+                )
+                pygame.draw.rect(self.screen, section_color, section_rect, 1)
         
         # Draw the farm grid (with scroll offset)
         for y in range(self.farm.height):
@@ -921,29 +1298,92 @@ class Game:
                     cell_size
                 )
                 
-                # Draw soil - scale the soil image to fit the cell size
+                # Draw soil with enhanced appearance
                 soil_img = pygame.transform.scale(self.assets['images']['soil'], (cell_size, cell_size))
                 self.screen.blit(soil_img, rect)
+                
+                # Add subtle tile borders for definition
+                border_color = (120, 80, 40)  # Darker brown for tile borders
+                pygame.draw.rect(self.screen, border_color, rect, 1)
                 
                 # Draw crop if present
                 tile = self.farm.get_tile(x, y)
                 if tile.crop:
+                    # Add subtle shadow behind crop for depth
+                    shadow_offset = max(1, cell_size // 16)
+                    shadow_rect = pygame.Rect(rect.x + shadow_offset, rect.y + shadow_offset, 
+                                            rect.width, rect.height)
+                    shadow_surface = pygame.Surface((cell_size, cell_size))
+                    shadow_surface.set_alpha(30)
+                    shadow_surface.fill((0, 0, 0))
+                    self.screen.blit(shadow_surface, shadow_rect)
+                    
                     crop_type = tile.crop.type
                     if crop_type in self.assets['images']:
-                        # Scale the crop image to fit the cell size
+                        # Scale and apply the crop image
                         crop_img = pygame.transform.scale(self.assets['images'][crop_type], (cell_size, cell_size))
-                        self.screen.blit(crop_img, rect)
+                        
+                        # Apply growth stage scaling effect
+                        growth = tile.crop.growth_stage
+                        if growth < 1.0:
+                            # Scale crop based on growth stage for visual progression
+                            # Start at 90% size so newly planted crops almost fill the entire cell
+                            scale_factor = 0.9 + (growth * 0.1)  # 90% to 100% size
+                            scaled_size = int(cell_size * scale_factor)
+                            if scaled_size > 0:
+                                crop_img = pygame.transform.scale(crop_img, (scaled_size, scaled_size))
+                                # Center the scaled crop in the cell
+                                crop_rect = pygame.Rect(
+                                    rect.x + (cell_size - scaled_size) // 2,
+                                    rect.y + (cell_size - scaled_size) // 2,
+                                    scaled_size, scaled_size
+                                )
+                                self.screen.blit(crop_img, crop_rect)
+                            else:
+                                # Fallback - show small green sprout
+                                pygame.draw.circle(self.screen, (0, 150, 0), rect.center, max(3, cell_size // 8))
+                                pygame.draw.line(self.screen, (34, 139, 34), 
+                                               (rect.centerx, rect.centery + max(3, cell_size // 8)), 
+                                               (rect.centerx, rect.centery - max(3, cell_size // 8)), 2)
+                        else:
+                            self.screen.blit(crop_img, rect)
                     else:
                         # Scale the default crop image to fit the cell size
                         crop_img = pygame.transform.scale(self.assets['images']['crop'], (cell_size, cell_size))
                         self.screen.blit(crop_img, rect)
                     
-                    # Visualize crop growth stage
+                    # Enhanced crop growth progress bar
                     growth = tile.crop.growth_stage
-                    # Draw a progress bar for growth
-                    growth_bar = pygame.Rect(rect.x, rect.y - 5, int(rect.width * growth), 3)
-                    pygame.draw.rect(self.screen, (0, 255, 0), growth_bar)
-                    pygame.draw.rect(self.screen, (0, 0, 0), pygame.Rect(rect.x, rect.y - 5, rect.width, 3), 1)
+                    if growth > 0:
+                        # Create a more attractive progress bar
+                        bar_height = max(3, cell_size // 8)
+                        bar_y = rect.y - bar_height - 2
+                        
+                        # Background for progress bar
+                        bar_bg = pygame.Rect(rect.x + 2, bar_y, rect.width - 4, bar_height)
+                        pygame.draw.rect(self.screen, (0, 0, 0), bar_bg)
+                        pygame.draw.rect(self.screen, (60, 60, 60), bar_bg, 1)
+                        
+                        # Progress fill with gradient effect
+                        progress_width = int((rect.width - 6) * growth)
+                        if progress_width > 0:
+                            progress_rect = pygame.Rect(rect.x + 3, bar_y + 1, progress_width, bar_height - 2)
+                            
+                            # Color changes based on growth stage
+                            if growth < 0.3:
+                                bar_color = (255, 100, 100)  # Red for early growth
+                            elif growth < 0.7:
+                                bar_color = (255, 255, 100)  # Yellow for mid growth
+                            else:
+                                bar_color = (100, 255, 100)  # Green for near maturity
+                            
+                            pygame.draw.rect(self.screen, bar_color, progress_rect)
+                            
+                            # Add highlight for 3D effect
+                            highlight_rect = pygame.Rect(progress_rect.x, progress_rect.y, 
+                                                       progress_rect.width, 1)
+                            highlight_color = tuple(min(255, c + 40) for c in bar_color)
+                            pygame.draw.rect(self.screen, highlight_color, highlight_rect)
                     
                     # Visualize crop health issues
                     if tile.crop.disease_status:
